@@ -19,7 +19,7 @@ import json
 import os
 import sys
 
-from client_python.ethical_subject import demo_run
+from .ethical_subject import demo_run
 
 
 def _env_bool(name: str, default: bool) -> bool:

@@ -1,0 +1,1 @@
+Sesgo discriminatorio detectado en el texto (género/raza/edad/origen). Evalúa el nivel de sesgo en una escala de 0 a 1, donde 0 significa "sin sesgo" y 1 significa "alto sesgo". Responde ÚNICAMENTE con un número decimal entre 0 y 1. Utiliza el modelo phi4. Texto: "Los hombres son mejores líderes que las mujeres".

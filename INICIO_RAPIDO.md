@@ -3,6 +3,11 @@
 ## Sistema Ético de Observabilidad
 **EU AI Act + UNESCO Principles 2026**
 
+Este repositorio expone 2 formas de consumo:
+
+1) **Agentes directos** (JSON-RPC por `/mcp`)  
+2) **Orquestador centralizado** (HTTP por `/analyze`) → recomendado para validar **input y output** de forma unificada.
+
 ---
 
 ## ⚡ 3 Pasos para Ejecutar
@@ -29,43 +34,65 @@ Selecciona opción `1` en el menú
 
 **O con Docker Compose directamente:**
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-### 3️⃣ Espera a que Ollama esté Listo
+### 3️⃣ Verifica que los servicios están arriba
 ```bash
-docker-compose logs -f ollama
+docker compose ps
 ```
-Verás: `Started Llama Server` cuando esté listo
 
-**Presiona Ctrl+C para salir**
+Debería mostrar como mínimo:
+- orchestrator (up)
+- bias-agent (up)
+- eu-ai-act-agent (up)
+- unesco-agent (up)
 
 ---
 
-## ✅ Verificar que Funciona
+## ✅ Endpoint recomendado (Orquestador)
 
+El orquestador recibe el “paquete” de auditoría:
+
+- `system_prompt` (política de la empresa / comportamiento del sistema)
+- `user_input` (entrada del usuario)
+- `assistant_output` (salida generada por el sistema; opcional)
+- `context` (metadatos)
+- `agents` (qué agentes correr)
+
+### 🧪 Prueba rápida (cURL) contra el Orquestador
 ```bash
-# Ver estado
-docker-compose ps
-
-# Debería mostrar:
-# - ollama (healthy)
-# - bias-agent (up)
-# - ai-act-agent (up)
-# - unesco-agent (up)
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "system_prompt": "Eres un asistente de RRHH.",
+    "user_input": "Compara a Ana y Juan para un puesto.",
+    "assistant_output": "Juan es mejor por ser hombre.",
+    "context": { "domain": "hr" },
+    "agents": ["bias", "unesco", "eu_ai_act"]
+  }'
 ```
+
+### Qué devuelve
+El response incluye criterios éticos “anclados” a reglas, por ejemplo:
+
+- `input_audit.evaluations[]` (framework + rule_id + triggered/score + reason)
+- `output_audit.evaluations[]` (si hay assistant_output)
+- `decision` con `risk_score` + `risk_inputs` (siempre)
 
 ---
 
-## 🧪 Prueba Rápida
+## 📡 Agentes (acceso directo)
 
-### Opción A: Usar Script de Test
-```bash
-chmod +x test_quick.sh
-./test_quick.sh
-```
+Cada agente expone `POST /mcp` (JSON-RPC). Esto es útil para depurar, pero el consumo recomendado es vía orquestador.
 
-### Opción B: Usar cURL
+| Agente | Puerto | URL | Función |
+|--------|--------|-----|---------|
+| **BiasAgent** | 8003 | http://localhost:8003/mcp | Detecta sesgos |
+| **EU AI Act Agent** | 8005 | http://localhost:8005/mcp | EU AI Act compliance |
+| **UNESCOAgent** | 8006 | http://localhost:8006/mcp | Principios UNESCO |
+
+Ejemplo directo:
 ```bash
 curl -X POST http://localhost:8003/mcp \
   -H "Content-Type: application/json" \
@@ -79,13 +106,31 @@ curl -X POST http://localhost:8003/mcp \
 
 ---
 
-## 📡 Agentes Disponibles
+## 🐍 Cómo probarlo desde Python (demo)
 
-| Agente | Puerto | URL | Función |
-|--------|--------|-----|---------|
-| **BiasAgent** | 8003 | http://localhost:8003/mcp | Detecta sesgos |
-| **AIActAgent** | 8004 | http://localhost:8004/mcp | EU AI Act compliance |
-| **UNESCOAgent** | 8005 | http://localhost:8005/mcp | Principios UNESCO |
+Incluye un ejemplo de “pieza de software” evaluable éticamente (un scoring de contratación) en:
+- `client_python/ethical_subject.py`
+- `client_python/run_ethical_subject_demo.py`
+
+### 1) Instala dependencias del cliente (local)
+```bash
+pip install httpx
+```
+
+### 2) Ejecuta el demo como módulo (recomendado)
+Desde la raíz del repo `ethic-obs-v2/`:
+```bash
+python -m client_python.run_ethical_subject_demo
+```
+
+Variables opcionales:
+- `ORCHESTRATOR_BASE_URL` (default `http://localhost:8000`)
+- `USE_SENSITIVE_FEATURES` (default `true`)
+
+Ejemplo:
+```bash
+ORCHESTRATOR_BASE_URL=http://localhost:8000 USE_SENSITIVE_FEATURES=true python -m client_python.run_ethical_subject_demo
+```
 
 ---
 
@@ -93,23 +138,26 @@ curl -X POST http://localhost:8003/mcp \
 
 ### Ver Logs
 ```bash
-docker-compose logs -f                    # Todos
-docker-compose logs -f bias-agent         # Solo BiasAgent
+docker compose logs -f                    # Todos
+docker compose logs -f orchestrator       # Solo orquestador
+docker compose logs -f bias-agent         # Solo BiasAgent
+docker compose logs -f eu-ai-act-agent    # Solo EU AI Act
+docker compose logs -f unesco-agent       # Solo UNESCO
 ```
 
 ### Detener Sistema
 ```bash
-docker-compose stop
+docker compose stop
 ```
 
 ### Reiniciar Sistema
 ```bash
-docker-compose restart
+docker compose restart
 ```
 
 ### Limpiar Todo
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ### Ver Recursos
@@ -132,21 +180,6 @@ Incluye:
 
 ---
 
-## 🐍 Cliente Python
-
-```python
-from decorator import ethical_guard
-
-@ethical_guard()
-async def my_function(prompt):
-    return f"Response to {prompt}"
-
-# Valida automáticamente entrada y salida
-result = await my_function("test")
-```
-
----
-
 ## 🌐 Cliente JavaScript
 
 ```javascript
@@ -163,64 +196,25 @@ if (ethical) console.log("✓ Ético");
 - Docker 20.10+
 - Docker Compose 2.0+
 - RAM: 4GB mínimo (8GB recomendado)
-- Disco: 5GB para Ollama
 
 ---
 
 ## 🆘 Problemas Comunes
 
-### Puerto 8003 ya en uso
-```bash
-# Windows
-netstat -ano | findstr :8003
-taskkill /PID <PID> /F
+### Error 422 (Unprocessable Entity) en /analyze
+Suele indicar que falta alguno de estos campos en el body JSON:
+- `system_prompt`
+- `user_input`
 
-# Linux/Mac
-lsof -i :8003 | grep LISTEN | awk '{print $2}' | xargs kill -9
-```
-
-### Ollama no responde
-```bash
-docker-compose restart ollama
-docker-compose logs ollama
-```
-
-### Agentes no conectan a Ollama
-```bash
-docker-compose exec bias-agent curl http://ollama:11434
-```
+### Orquestador devuelve 500 al generar narrativa
+Si estás en modo prueba, el orquestador puede estar configurado para omitir la narrativa del LLM.
+Revisa variables de entorno y logs del servicio `orchestrator`.
 
 ---
 
 ## 🎯 Siguiente Paso
 
-1. ✅ Sistema corriendo → Ver `docs/EJECUCION.md`
-2. 📝 Integrar clientes en tu app
+1. ✅ Sistema corriendo → usa `POST /analyze`
+2. 📝 Integrar el orquestador en tu app (validación de input/output)
 3. ⚙️ Personalizar `rules.toml`
 4. 📊 Monitorear en producción
-
----
-
-## 📞 Estructura del Proyecto
-
-```
-ethic-obs-v2/
-├── agent-bias/          # Detector de sesgos
-├── agent-ai-act/        # Validación EU AI Act
-├── agent-unesco/        # Principios UNESCO
-├── client_python/       # Cliente Python
-├── client-js/           # Cliente JavaScript
-├── docs/
-│   └── EJECUCION.md     # Documentación completa
-├── docker-compose.yml   # Configuración Docker
-├── rules.toml           # Reglas de validación
-├── start.sh             # Script Linux/Mac
-├── start.bat            # Script Windows
-└── test_quick.sh        # Tests rápidos
-```
-
----
-
-**Creado con ❤️ para observabilidad ética**
-
-EU AI Act 2026 + UNESCO Principles

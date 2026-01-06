@@ -1,4 +1,25 @@
 services:
+  orchestrator:
+    build: ./agent-orchestrator
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - BIAS_AGENT_URL=http://bias-agent:8000/mcp
+      - EU_AGENT_URL=http://eu-ai-act-agent:8000/mcp
+      - UNESCO_AGENT_URL=http://unesco-agent:8000/mcp
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
+      - LANG=C
+      - LC_ALL=C
+      - SKIP_LLM_SUMMARY=true
+    restart: unless-stopped
+    depends_on:
+      - bias-agent
+      - eu-ai-act-agent
+      - unesco-agent
+
   bias-agent:
     build: ./agent-bias
     ports: ["8003:8000"]
@@ -17,7 +38,9 @@ services:
 
   unesco-agent:
     build: ./agent-unesco
-    ports: ["8004:8000"]
+    ports:
+      - "8006:8000" # Puerto único para este agente
     volumes:
       - ./rules.toml:/app/rules.toml
       - ./agent-unesco/.env:/app/.env
+    restart: unless-stopped

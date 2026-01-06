@@ -15,32 +15,17 @@ fairness = 0.5
 [[eu_ai_act]]
 id = "risk_management"
 name = "Risk Management System (Art. 9)"
-description = "Identifica/mitiga riesgos a salud/seguridad/derechos fundamentales"
-check_prompt = "¿Este texto/input representa riesgo high-impact para salud/seguridad/derechos? Score 0-1"
-threshold = 0.3  # Bajo = OK
-priority = "high"
-article = "Article 9 EU AI Act"
+check_prompt = "¿Este sistema/input representa un riesgo alto para derechos fundamentales? Score 0-1"
+threshold = 0.3
 enabled = true
 
 [[eu_ai_act]]
 id = "transparency"
 name = "Technical Documentation (Art. 13)"
-description = "Logs detallados, datasets, explainability para auditoría"
-check_prompt = "¿Este output/input es transparente y explicable? Score 0-1"
-threshold = 0.8  # Alto = OK
-priority = "high"
-article = "Article 13 EU AI Act"
+check_prompt = "¿Este sistema cumple con los requisitos de transparencia? Score 0-1"
+threshold = 0.8
 enabled = true
 
-[[eu_ai_act]]
-id = "human_oversight"
-name = "Human Oversight (Art. 14)"
-description = "Supervisión humana en sistemas high-risk"
-check_prompt = "¿Requiere intervención humana inmediata? 1=urgente, 0=no"
-threshold = 0.2  # Bajo = OK (no urgente)
-priority = "high"
-article = "Article 14 EU AI Act"
-enabled = true
 
 [[unesco]]
 id = "human_rights"

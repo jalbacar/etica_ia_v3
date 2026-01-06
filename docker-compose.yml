@@ -1,33 +1,23 @@
-version: "3.8"
 services:
-  ollama:
-    image: ollama/ollama:latest
-    ports: ["11434:11434"]
-    volumes: [ollama_data:/root/.ollama]
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   bias-agent:
     build: ./agent-bias
-    restart: no # <-- Añade esta línea
     ports: ["8003:8000"]
-    depends_on: { ollama: { condition: service_healthy } }
-    volumes: ["./rules.toml:/app/rules.toml"]
+    volumes:
+      - ./rules.toml:/app/rules.toml
+      - ./agent-bias/.env:/app/.env
 
-  ai-act-agent:
-    build: ./agent-ai-act
-    restart: unless-stopped # <-- Añade esta línea
-    ports: ["8004:8000"]
-    depends_on: { ollama: { condition: service_healthy } }
+  eu-ai-act-agent:
+    build: ./agent-eu-ai-act
+    ports:
+      - "8005:8000" # Puerto diferente al bias-agent (8003)
+    volumes:
+      - ./rules.toml:/app/rules.toml
+      - ./agent-eu-ai-act/.env:/app/.env
+    restart: unless-stopped
 
   unesco-agent:
     build: ./agent-unesco
-    restart: unless-stopped # <-- Añade esta línea
-    ports: ["8005:8000"]
-    depends_on: { ollama: { condition: service_healthy } }
-
-volumes:
-  ollama_data:
+    ports: ["8004:8000"]
+    volumes:
+      - ./rules.toml:/app/rules.toml
+      - ./agent-unesco/.env:/app/.env

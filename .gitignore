@@ -1,0 +1,60 @@
+# Archivos de entorno
+.env
+.env.local
+.env.*
+!.env.example  # Opcional: incluir un ejemplo sin datos reales
+.env
+__pycache__/
+*.pyc
+
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Archivos de IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Logs y bases de datos
+*.log
+*.sqlite
+*.db
+
+# Docker
+docker-compose.override.yml
+
+# Ollama/OpenRouter
+models/
+
+# Archivos temporales
+*.tmp
+*.bak
+*~
+*.swp

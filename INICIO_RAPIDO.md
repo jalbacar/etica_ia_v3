@@ -109,6 +109,51 @@ curl -X POST http://localhost:8000/analyze \
 
 ---
 
+## 📄 Generador de Informes Éticos (Nuevo)
+
+El orquestador incluye un endpoint **`POST /report`** que genera **informes éticos en markdown** desde el JSON técnico.
+
+### Para Qué Sirve
+Transforma evaluaciones técnicas en narrativa comprensible para:
+- 👔 Ejecutivos
+- ⚖️ Equipos de Compliance
+- 📋 Auditores
+- 👥 RRHH
+
+### Ejemplo de Uso
+```bash
+# 1. Analizar
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"system_prompt": "RRHH", "user_input": "Texto", "agents": []}' \
+  > analysis.json
+
+# 2. Generar informe markdown
+curl -X POST http://localhost:8000/report \
+  -H "Content-Type: application/json" \
+  -d "{\"analysis_result\": $(cat analysis.json)}" \
+  | jq -r '.markdown' > informe_etico.md
+```
+
+### Resultado
+```markdown
+# 📊 Informe Ético - Evaluación de Sistema IA
+
+## Resumen Ejecutivo
+Decisión: ⛔ BLOCK  
+Nivel de Riesgo: 0.85 / 1.0
+
+## Hallazgos Principales
+... (lenguaje natural, sin JSON)
+
+## Recomendaciones
+... (accionables)
+```
+
+📚 **Documentación completa**: Ver `docs/ETHICAL_REPORTER.md`
+
+---
+
 ## 📡 Agentes (acceso directo)
 
 Cada agente expone `POST /mcp` (JSON-RPC). Esto es útil para depurar, pero el consumo recomendado es vía orquestador.

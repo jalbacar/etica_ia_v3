@@ -390,6 +390,29 @@ class AnalysisResponse(BaseModel):
     decision: OrchestratorDecision
 
 
+class ReportRequest(BaseModel):
+    """Request para generar reporte ético en markdown desde JSON del orquestador."""
+
+    analysis_result: Dict = Field(
+        ..., description="JSON completo devuelto por POST /analyze"
+    )
+    language: str = Field(default="es", description="Idioma del reporte (es/en)")
+    focus: List[str] = Field(
+        default_factory=lambda: ["risk", "findings", "recommendations"],
+        description="Secciones a incluir en el reporte",
+    )
+
+
+class ReportResponse(BaseModel):
+    """Reporte ético en markdown."""
+
+    markdown: str = Field(..., description="Informe ético en formato markdown")
+    generated_at: str = Field(..., description="Timestamp de generación (ISO)")
+    language: str = Field(..., description="Idioma del reporte")
+    word_count: int = Field(..., description="Conteo de palabras del reporte")
+
+
+
 # --- Configuración de URLs de Agentes ---
 
 BIAS_AGENT_URL = os.getenv("BIAS_AGENT_URL", "http://bias-agent:8000/mcp")
@@ -931,6 +954,213 @@ async def analyze(payload: AnalysisRequest) -> AnalysisResponse:
         analysis_text=final_state["analysis_text"],
         findings=findings,
         decision=decision_obj,
+    )
+
+
+# --- Ethical Report Generator ---
+
+
+async def generate_ethical_report(
+    analysis_result: Dict, language: str = "es", focus: List[str] = None
+) -> str:
+    """
+    Genera un informe ético en markdown desde el JSON del orquestador.
+
+    Transforma datos técnicos en narrativa comprensible para audiencias no técnicas.
+    Usa OpenRouter para generar el informe en lenguaje natural.
+
+    Args:
+        analysis_result: JSON completo del POST /analyze
+        language: Idioma del reporte ("es" o "en")
+        focus: Secciones a incluir (risk, findings, recommendations)
+
+    Returns:
+        str: Informe ético en formato markdown
+    """
+    focus = focus or ["risk", "findings", "recommendations"]
+
+    # Extraer información clave
+    decision = analysis_result.get("decision", {})
+    input_audit = analysis_result.get("input_audit", {})
+    output_audit = analysis_result.get("output_audit")
+    system_prompt = analysis_result.get("system_prompt", "")
+    user_input = analysis_result.get("user_input", "")
+    assistant_output = analysis_result.get("assistant_output")
+
+    # Modo test: generar markdown básico sin LLM
+    if SKIP_LLM_SUMMARY:
+        decision_emoji = {
+            "allow": "✅",
+            "warn": "⚠️",
+            "block": "⛔",
+        }.get(decision.get("decision"), "❓")
+
+        return f"""# 📊 Informe Ético - Evaluación de Sistema IA
+
+## Resumen Ejecutivo
+
+**Decisión**: {decision_emoji} **{decision.get('decision', 'N/A').upper()}**  
+**Nivel de Riesgo**: {decision.get('risk_score', 0.0):.2f} / 1.0
+
+{decision.get('summary', 'Sin resumen disponible.')}
+
+## Hallazgos Principales
+
+{"".join(f"- {finding}\\n" for finding in decision.get('key_findings', []))}
+
+## Recomendaciones
+
+{"".join(f"- {rec}\\n" for rec in decision.get('recommendations', []))}
+
+## Evaluaciones por Framework
+
+### Input (System + User)
+{"".join(f"- **{ev.get('framework')}** ({ev.get('rule_id')}): {ev.get('reason', 'N/A')}\\n" for ev in input_audit.get('evaluations', [])[:3])}
+
+{"### Output (Assistant)" if output_audit else ""}
+{"".join(f"- **{ev.get('framework')}** ({ev.get('rule_id')}): {ev.get('reason', 'N/A')}\\n" for ev in (output_audit.get('evaluations', [])[:3] if output_audit else []))}
+
+---
+*Informe generado en modo test (SKIP_LLM_SUMMARY=true)*
+*Timestamp: {decision.get('risk_inputs', {}).get('final_risk_score', 'N/A')}*
+"""
+
+    # Generar con LLM
+    language_name = "español" if language == "es" else "English"
+
+    system_prompt_llm = f"""Eres un experto en ética de IA que genera informes ejecutivos profesionales.
+
+Tu tarea es transformar datos técnicos de evaluación ética en un informe claro, 
+comprensible y accionable para audiencias no técnicas (ejecutivos, compliance, legal, RRHH).
+
+FORMATO REQUERIDO:
+- Markdown profesional con estructura clara
+- Título principal con emoji relevante
+- Resumen ejecutivo (2-3 frases cortas)
+- Secciones con headers (##)
+- Lenguaje profesional pero accesible
+- Foco en implicaciones éticas y riesgos de negocio
+
+NO INCLUIR:
+- JSON o código técnico
+- Detalles de implementación
+- Jerga técnica innecesaria
+
+IDIOMA: {language_name}
+"""
+
+    # Preparar datos para el LLM
+    decision_text = decision.get("decision", "N/A")
+    risk_score = decision.get("risk_score", 0.0)
+    summary = decision.get("summary", "")
+    key_findings = decision.get("key_findings", [])
+    recommendations = decision.get("recommendations", [])
+
+    # Evaluaciones más relevantes
+    input_evals = input_audit.get("evaluations", [])[:5]
+    output_evals = (
+        output_audit.get("evaluations", [])[:5] if output_audit else []
+    )
+
+    user_prompt_llm = f"""Genera un informe ético profesional basado en esta evaluación de sistema IA:
+
+CONTEXTO DEL SISTEMA:
+System Prompt: "{system_prompt[:200]}..."
+User Input: "{user_input[:200]}..."
+{"Assistant Output: " + assistant_output[:200] + "..." if assistant_output else "(Sin output de asistente)"}
+
+EVALUACIÓN ÉTICA:
+- Decisión: {decision_text}
+- Risk Score: {risk_score:.2f} / 1.0
+- Resumen técnico: {summary}
+
+HALLAZGOS CLAVE:
+{chr(10).join(f"- {f}" for f in key_findings)}
+
+RECOMENDACIONES:
+{chr(10).join(f"- {r}" for r in recommendations)}
+
+EVALUACIONES DETALLADAS INPUT:
+{chr(10).join(f"- Framework: {e.get('framework')}, Regla: {e.get('rule_id')}, Triggered: {e.get('triggered')}, Razón: {e.get('reason')}" for e in input_evals)}
+
+{"EVALUACIONES DETALLADAS OUTPUT:" if output_evals else ""}
+{chr(10).join(f"- Framework: {e.get('framework')}, Regla: {e.get('rule_id')}, Triggered: {e.get('triggered')}, Razón: {e.get('reason')}" for e in output_evals)}
+
+Genera un informe markdown estructurado, profesional y comprensible en {language_name}.
+Usa emojis apropiados para mejorar legibilidad (ej: ✅ allow, ⚠️ warn, ⛔ block).
+Enfócate en implicaciones de negocio y compliance."""
+
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("Falta API key para generar reporte con LLM")
+
+    llm = ChatOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+        model=os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo"),
+        temperature=0.3,
+        default_headers={
+            "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost")
+            .encode("ascii", "ignore")
+            .decode("ascii"),
+            "X-Title": os.getenv("OPENROUTER_X_TITLE", "ethic-obs-reporter")
+            .encode("ascii", "ignore")
+            .decode("ascii"),
+        },
+    )
+
+    messages = [
+        SystemMessage(content=system_prompt_llm),
+        HumanMessage(content=user_prompt_llm),
+    ]
+
+    response = await llm.ainvoke(messages)
+    return response.content
+
+
+@app.post("/report", response_model=ReportResponse)
+async def create_report(payload: ReportRequest) -> ReportResponse:
+    """
+    Genera un informe ético en markdown desde el JSON del orquestador.
+
+    **Flujo típico**:
+    1. POST /analyze → obtienes JSON con evaluación ética
+    2. POST /report con ese JSON → obtienes informe markdown legible
+
+    El informe transforma datos técnicos en narrativa comprensible para:
+    - Ejecutivos
+    - Equipos de Compliance
+    - Equipos legales
+    - RRHH
+
+    **Ejemplo**:
+    ```python
+    # 1. Analizar
+    analysis = requests.post("/analyze", json={...}).json()
+
+    # 2. Generar reporte
+    report = requests.post("/report", json={"analysis_result": analysis}).json()
+
+    # 3. Guardar markdown
+    with open("informe_etico.md", "w") as f:
+        f.write(report["markdown"])
+    ```
+    """
+    markdown = await generate_ethical_report(
+        analysis_result=payload.analysis_result,
+        language=payload.language,
+        focus=payload.focus,
+    )
+
+    from datetime import datetime
+
+    word_count = len(markdown.split())
+
+    return ReportResponse(
+        markdown=markdown,
+        generated_at=datetime.utcnow().isoformat() + "Z",
+        language=payload.language,
+        word_count=word_count,
     )
 
 

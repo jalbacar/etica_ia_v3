@@ -27,6 +27,170 @@ SKIP_LLM_SUMMARY = os.getenv("SKIP_LLM_SUMMARY", "false").strip().lower() in (
     "on",
 )
 
+# Flag para habilitar routing via LLM (OpenRouter) en lugar de determinista.
+# Por defecto desactivado: usa regex/keywords sin coste de tokens.
+USE_LLM_ROUTER = os.getenv("USE_LLM_ROUTER", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+)
+
+
+# --- Agent Router ---
+
+
+import re
+from typing import Optional as Opt
+
+
+class AgentRouter:
+    """
+    Router inteligente que selecciona agentes apropiados basándose en el contenido.
+    
+    Estrategias disponibles:
+    - Determinista (default): regex + keywords + domain mapping. Coste: 0 tokens.
+    - LLM-based (futuro): clasificador via OpenRouter. Coste: ~50-100 tokens.
+    
+    Uso:
+        selected = AgentRouter.route(text, context)
+        # o async para LLM:
+        selected = await AgentRouter.route_async(text, context)
+    """
+
+    # Patrones regex para detectar contenido relevante a cada agente
+    BIAS_PATTERNS = [
+        r"\b(hombre|mujer|género|masculino|femenino|sexo)\b",
+        r"\b(edad|joven|viejo|anciano|mayor|años)\b",
+        r"\b(raza|etnia|color|negro|blanco|asiático|latino)\b",
+        r"\b(discapacidad|minusválido|impedido|ciego|sordo)\b",
+        r"\b(religión|musulmán|cristiano|judío|ateo)\b",
+        r"\b(orientación sexual|gay|lesbiana|homosexual|heterosexual)\b",
+        r"\b(nacionalidad|extranjero|inmigrante|migrante)\b",
+        r"(mejor|peor|superior|inferior).{0,30}(por ser|porque es|por su)",
+        r"\b(discrimina|sesgo|bias|prejuicio)\b",
+    ]
+
+    EU_AI_ACT_PATTERNS = [
+        r"\b(riesgo|alto riesgo|high risk|risk management)\b",
+        r"\b(crédito|contratación|hiring|loan|credit|scoring)\b",
+        r"\b(biométrico|facial|reconocimiento|fingerprint)\b",
+        r"\b(decisión automática|automated decision|automatic decision)\b",
+        r"\b(transparencia|explicabilidad|auditoría|explainability)\b",
+        r"\b(AI Act|EU AI|regulación IA|compliance)\b",
+        r"\b(sistema de IA|AI system|algoritmo de decisión)\b",
+        r"\b(art\.?\s*9|art\.?\s*13|art\.?\s*14)\b",  # Artículos específicos
+    ]
+
+    UNESCO_PATTERNS = [
+        r"\b(derechos humanos|human rights|dignidad|dignity)\b",
+        r"\b(daño|harm|perjuicio|damage)\b",
+        r"\b(discriminación|discriminatory|no discriminación)\b",
+        r"\b(proporcionalidad|proportionality|proporcionado)\b",
+        r"\b(UNESCO|principios éticos|ethical principles)\b",
+        r"\b(equidad|fairness|justicia social|social justice)\b",
+        r"\b(bienestar|wellbeing|well-being)\b",
+    ]
+
+    # Mapeo de dominios a agentes recomendados
+    DOMAIN_MAPPING = {
+        "hr": ["bias", "eu_ai_act"],
+        "rrhh": ["bias", "eu_ai_act"],
+        "hiring": ["bias", "eu_ai_act"],
+        "finance": ["eu_ai_act", "bias"],
+        "finanzas": ["eu_ai_act", "bias"],
+        "credit": ["eu_ai_act", "bias"],
+        "healthcare": ["unesco", "eu_ai_act", "bias"],
+        "salud": ["unesco", "eu_ai_act", "bias"],
+        "education": ["unesco", "bias"],
+        "educacion": ["unesco", "bias"],
+        "legal": ["eu_ai_act", "unesco"],
+        "law": ["eu_ai_act", "unesco"],
+        "security": ["eu_ai_act", "unesco"],
+        "seguridad": ["eu_ai_act", "unesco"],
+    }
+
+    @classmethod
+    def route(cls, text: str, context: Opt[Dict] = None) -> List[str]:
+        """
+        Determina qué agentes invocar basándose en el contenido (determinista).
+        
+        Args:
+            text: Texto completo a analizar (system_prompt + user_input + assistant_output)
+            context: Diccionario con metadatos (ej: {"domain": "hr"})
+        
+        Returns:
+            Lista de agent IDs a invocar. Si no detecta nada específico, devuelve todos.
+        """
+        context = context or {}
+        text_lower = text.lower()
+        agents: set = set()
+
+        # 1. Check domain context primero (más específico)
+        domain = str(context.get("domain", "")).lower().strip()
+        if domain in cls.DOMAIN_MAPPING:
+            agents.update(cls.DOMAIN_MAPPING[domain])
+
+        # 2. Pattern matching para cada agente
+        for pattern in cls.BIAS_PATTERNS:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                agents.add("bias")
+                break
+
+        for pattern in cls.EU_AI_ACT_PATTERNS:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                agents.add("eu_ai_act")
+                break
+
+        for pattern in cls.UNESCO_PATTERNS:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                agents.add("unesco")
+                break
+
+        # 3. Fallback: si no detectamos nada específico, usar todos los agentes
+        if not agents:
+            return ["bias", "unesco", "eu_ai_act"]
+
+        return list(agents)
+
+    @classmethod
+    async def route_async(cls, text: str, context: Opt[Dict] = None) -> List[str]:
+        """
+        Router async con soporte para LLM-based routing (futuro).
+        
+        Si USE_LLM_ROUTER=true, usa OpenRouter para clasificación precisa.
+        Si no, delega al router determinista.
+        """
+        if not USE_LLM_ROUTER:
+            return cls.route(text, context)
+
+        # --- LLM-based routing (preparado para futuro) ---
+        # TODO: Implementar cuando se necesite mayor precisión
+        #
+        # Ejemplo de implementación:
+        # api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        # llm = ChatOpenAI(
+        #     base_url="https://openrouter.ai/api/v1",
+        #     api_key=api_key,
+        #     model=os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo"),
+        #     temperature=0.0,
+        # )
+        # prompt = f'''Clasifica qué agentes éticos necesita este texto.
+        # Agentes disponibles: bias (sesgos), unesco (derechos humanos), eu_ai_act (regulación EU).
+        # Responde SOLO con un JSON array, ej: ["bias", "unesco"]
+        # Texto: "{text[:500]}"
+        # JSON:'''
+        # response = await llm.ainvoke([HumanMessage(content=prompt)])
+        # try:
+        #     return json.loads(response.content)
+        # except:
+        #     return cls.route(text, context)  # Fallback a determinista
+        
+        # Por ahora, fallback a determinista
+        return cls.route(text, context)
+
+
 # --- Definición del Estado ---
 
 
@@ -669,7 +833,18 @@ async def analyze(payload: AnalysisRequest) -> AnalysisResponse:
         assistant_output=payload.assistant_output,
     )
 
-    graph = create_orchestrator_graph(enabled_agents=payload.agents)
+    # --- Smart Agent Router ---
+    # Si agents está vacío o no especificado, el router selecciona automáticamente
+    # basándose en el contenido y contexto (ahorra tokens en agentes innecesarios)
+    if payload.agents:
+        selected_agents = payload.agents
+        routing_mode = "explicit"
+    else:
+        selected_agents = await AgentRouter.route_async(analysis_text, payload.context)
+        routing_mode = "auto"
+        print(f"[AgentRouter] Auto-selected agents: {selected_agents}")
+
+    graph = create_orchestrator_graph(enabled_agents=selected_agents)
 
     initial_state: GraphState = {
         "system_prompt": payload.system_prompt,
@@ -692,7 +867,11 @@ async def analyze(payload: AnalysisRequest) -> AnalysisResponse:
                 "per_agent_signal": {},
             },
         },
-        "metadata": payload.context or {},
+        "metadata": {
+            **(payload.context or {}),
+            "routing_mode": routing_mode,
+            "selected_agents": selected_agents,
+        },
     }
 
     final_state = await graph.ainvoke(initial_state)

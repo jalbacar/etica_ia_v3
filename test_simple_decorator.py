@@ -1,6 +1,6 @@
 """Test simple del primer caso"""
 import asyncio
-from client_python.decorator import ethical_guard, EthicalGuardException
+from ethical_guard import ethical_guard, EthicalGuardException
 
 
 @ethical_guard(context={"domain": "hr"})

@@ -4,7 +4,7 @@ Test del decorador @ethical_guard mejorado
 Demuestra cómo usar el decorador para validar funciones automáticamente.
 """
 import asyncio
-from client_python.decorator import ethical_guard, EthicalGuardException
+from ethical_guard import ethical_guard, EthicalGuardException
 
 
 # Ejemplo 1: Función async con sesgo (se bloqueará)

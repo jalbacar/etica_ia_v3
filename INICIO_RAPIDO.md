@@ -82,6 +82,33 @@ El response incluye criterios éticos “anclados” a reglas, por ejemplo:
 
 ---
 
+## 🧠 Router Automático de Agentes (Nuevo)
+
+Si **no especificas `agents`** (o envías `[]`), el orquestador selecciona automáticamente los agentes apropiados.
+
+### Ventajas
+- ✅ **Ahorro de tokens**: Solo invoca agentes necesarios (hasta 66% menos)
+- ✅ **Menor latencia**: Menos llamadas LLM
+- ✅ **Automático**: No necesitas saber qué agentes usar
+
+### Ejemplo
+```bash
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "system_prompt": "Asistente de RRHH",
+    "user_input": "Juan es mejor porque es hombre",
+    "context": { "domain": "hr" },
+    "agents": []
+  }'
+```
+
+**Resultado**: El router detecta `domain: "hr"` + patrones de sesgo → invoca solo `["bias", "eu_ai_act"]`
+
+📚 **Documentación completa**: Ver `docs/AGENT_ROUTER.md`
+
+---
+
 ## 📡 Agentes (acceso directo)
 
 Cada agente expone `POST /mcp` (JSON-RPC). Esto es útil para depurar, pero el consumo recomendado es vía orquestador.
